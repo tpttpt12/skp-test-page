@@ -42,6 +42,13 @@
   #viewer .box { background:#fff; border-radius:12px; width:min(1000px,94vw); height:min(700px,88vh); display:flex; flex-direction:column; overflow:hidden; }
   #viewer .bar { display:flex; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; font-weight:700; }
   #viewer model-viewer { flex:1; width:100%; background:#f1f5f9; }
+  .prog { height:6px; background:#e2e8f0; border-radius:99px; overflow:hidden; margin-top:8px; }
+  .prog > i { display:block; height:100%; width:0; background:var(--blue); transition:width .4s; }
+  .prog.done > i { background:var(--green); }
+  .prog.err > i { background:var(--red); }
+  .vctl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 14px; border-top:1px solid var(--line); font-size:12px; color:var(--sub); }
+  .vctl input[type=range] { width:160px; }
+  .vctl button { padding:5px 10px; font-size:12px; }
   .hint { font-size:12px; color:var(--sub); margin-top:14px; line-height:1.6; }
 </style>
 </head>
@@ -67,7 +74,19 @@
 <div id="viewer">
   <div class="box">
     <div class="bar"><span id="vtitle"></span><span class="spacer"></span><button id="vclose">닫기</button></div>
-    <model-viewer id="mv" camera-controls touch-action="pan-y" shadow-intensity="0.6" exposure="1" tone-mapping="neutral"></model-viewer>
+    <model-viewer id="mv" camera-controls touch-action="pan-y" shadow-intensity="0.6" exposure="1" tone-mapping="neutral"
+      field-of-view="35deg" min-field-of-view="5deg" max-field-of-view="90deg"
+      min-camera-orbit="auto 0deg auto" max-camera-orbit="auto 180deg auto"></model-viewer>
+    <div class="vctl">
+      <span>원근감</span>
+      <input id="fov" type="range" min="5" max="90" value="35">
+      <span id="fovv">35°</span>
+      <span class="spacer"></span>
+      <button data-orbit="auto auto auto">처음 시점</button>
+      <button data-orbit="0deg 90deg auto">정면</button>
+      <button data-orbit="90deg 90deg auto">측면</button>
+      <button data-orbit="0deg 0deg auto">윗면</button>
+    </div>
   </div>
 </div>
 
@@ -119,7 +138,49 @@ $('pat').addEventListener('input', refreshPat);
 refreshPat();
 
 // ---------- skp 안의 PNG 썸네일 꺼내기 ----------
+// 최신 스케치업 파일은 썸네일이 압축 묶음(deflate) 안에 들어 있어서 풀어서 꺼낸다
 const SIG = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
+function findSig(b) {
+  outer: for (let i = 0; i <= b.length - 8; i++) {
+    for (let j = 0; j < 8; j++) if (b[i+j] !== SIG[j]) continue outer;
+    return i;
+  }
+  return -1;
+}
+function iendEnd(b) {
+  for (let i = 8; i <= b.length - 8; i++)
+    if (b[i] === 0x49 && b[i+1] === 0x45 && b[i+2] === 0x4E && b[i+3] === 0x44) return i + 8;
+  return -1;
+}
+async function extractThumb(b) {
+  const s = findSig(b);
+  if (s < 0) return null;
+  const h = s - 5;
+  const storedBlock = h >= 0 && (b[h] & 0xFE) === 0 && ((b[h+1] | b[h+2] << 8) ^ (b[h+3] | b[h+4] << 8)) === 0xFFFF;
+  if (storedBlock && 'DecompressionStream' in window) {
+    try {
+      const ds = new DecompressionStream('deflate-raw');
+      const w = ds.writable.getWriter();
+      w.write(b.subarray(h, Math.min(b.length, h + 16 * 1024 * 1024))).catch(() => {});
+      w.close().catch(() => {});
+      const r = ds.readable.getReader();
+      let buf = new Uint8Array(0);
+      try {
+        while (true) {
+          const { value, done } = await r.read();
+          if (done) break;
+          const nb = new Uint8Array(buf.length + value.length); nb.set(buf); nb.set(value, buf.length); buf = nb;
+          const e = iendEnd(buf);
+          if (e > 0) { r.cancel().catch(() => {}); return buf.slice(0, e); }
+          if (buf.length > 8 * 1024 * 1024) break;
+        }
+      } catch (e) {}
+      const e = iendEnd(buf);
+      if (e > 0) return buf.slice(0, e);
+    } catch (e) {}
+  }
+  return extractPng(b);
+}
 function extractPng(b) {
   let start = -1;
   outer: for (let i = 0; i <= b.length - 8; i++) {
@@ -156,7 +217,7 @@ async function getFolder() {
   })).json();
   return folderId = c.id;
 }
-async function driveUpload(blob, name, mime) {
+async function driveUpload(blob, name, mime, onProg) {
   const parent = await getFolder();
   const init = await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
     method: 'POST',
@@ -165,9 +226,19 @@ async function driveUpload(blob, name, mime) {
   });
   const loc = init.headers.get('Location');
   if (!loc) throw new Error('드라이브 업로드 주소를 받지 못했어요');
-  const r = await fetch(loc, { method: 'PUT', headers: { 'Content-Type': mime }, body: blob });
-  if (!r.ok) throw new Error('드라이브 업로드 실패 ' + r.status);
-  return (await r.json()).id;
+  const res = await xhr('PUT', loc, { 'Content-Type': mime }, blob, onProg);
+  return JSON.parse(res).id;
+}
+function xhr(method, url, headers, body, onProg) {
+  return new Promise((ok, no) => {
+    const x = new XMLHttpRequest();
+    x.open(method, url);
+    for (const k in headers) x.setRequestHeader(k, headers[k]);
+    if (onProg) x.upload.onprogress = e => { if (e.lengthComputable) onProg(e.loaded / e.total); };
+    x.onload = () => (x.status >= 200 && x.status < 300) ? ok(x.responseText) : no(new Error('업로드 실패 ' + x.status + ': ' + String(x.responseText).slice(0, 200)));
+    x.onerror = () => no(new Error('네트워크 오류로 업로드 실패'));
+    x.send(body);
+  });
 }
 
 // ---------- 깃허브 변환기 ----------
@@ -180,13 +251,9 @@ function blobToB64(blob) {
     fr.readAsDataURL(blob);
   });
 }
-async function ghPut(path, blob, message) {
-  const r = await fetch(ghBase() + path, {
-    method: 'PUT',
-    headers: { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github+json' },
-    body: JSON.stringify({ message, content: await blobToB64(blob) }),
-  });
-  if (!r.ok) throw new Error('깃허브 오류 ' + r.status + ': ' + (await r.text()).slice(0, 200));
+async function ghPut(path, blob, message, onProg) {
+  const body = JSON.stringify({ message, content: await blobToB64(blob) });
+  await xhr('PUT', ghBase() + path, { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body, onProg);
 }
 async function ghRaw(path) {
   const r = await fetch(ghBase() + path, {
@@ -205,12 +272,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function makeCard(file) {
   const el = document.createElement('div');
   el.className = 'card';
-  el.innerHTML = '<div class="thumb"><div class="none">읽는 중…</div></div><div class="meta"><div class="name"></div><div class="status"></div><div class="links"></div></div>';
+  el.innerHTML = '<div class="thumb"><div class="none">읽는 중…</div></div><div class="meta"><div class="name"></div><div class="status"></div><div class="prog"><i></i></div><div class="links"></div></div>';
   el.querySelector('.name').textContent = file.name;
   $('grid').prepend(el);
   return {
     el,
-    status(t, err) { const s = el.querySelector('.status'); s.textContent = t; s.className = 'status' + (err ? ' err' : ''); },
+    pct: 0,
+    status(t, err) {
+      const s = el.querySelector('.status'); s.textContent = t; s.className = 'status' + (err ? ' err' : '');
+      if (err) el.querySelector('.prog').className = 'prog err';
+    },
+    prog(p, t) {
+      this.pct = Math.max(this.pct, Math.min(100, p));
+      el.querySelector('.prog > i').style.width = this.pct + '%';
+      if (this.pct >= 100) el.querySelector('.prog').className = 'prog done';
+      if (t) this.status(`${t} · ${Math.floor(this.pct)}%`);
+    },
     link(label, id) {
       const a = document.createElement('a');
       a.href = `https://drive.google.com/file/d/${id}/view`; a.target = '_blank'; a.textContent = label;
@@ -225,7 +302,7 @@ async function handle(file) {
 
   // ① 썸네일
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const png = extractPng(bytes);
+  const png = await extractThumb(bytes);
   let pngBlob = null;
   if (png) {
     pngBlob = new Blob([png], { type: 'image/png' });
@@ -243,21 +320,24 @@ async function handle(file) {
 
   try {
     // ② 드라이브에 원본 + 썸네일
-    card.status(`드라이브에 원본 올리는 중… (${fmt(file.size)})`);
-    const skpId = await driveUpload(file, file.name, 'application/octet-stream');
+    card.prog(5, `1/4 드라이브에 원본 올리는 중 (${fmt(file.size)})`);
+    const skpId = await driveUpload(file, file.name, 'application/octet-stream',
+      f => card.prog(5 + f * 30, `1/4 드라이브에 원본 올리는 중 (${fmt(file.size)})`));
     card.link('원본', skpId);
 
     // ③ 변환기로 보내기
-    card.status('변환기로 보내는 중…');
-    await ghPut(`inbox/${id}.skp`, file, `변환 요청: ${file.name}`);
+    card.prog(35, '2/4 변환기로 보내는 중');
+    await ghPut(`inbox/${id}.skp`, file, `변환 요청: ${file.name}`,
+      f => card.prog(35 + f * 15, '2/4 변환기로 보내는 중'));
 
     // ④ 변환 결과 기다리기
     const t0 = Date.now();
     let glb = null;
     while (Date.now() - t0 < 20 * 60 * 1000) {
       const sec = Math.round((Date.now() - t0) / 1000);
-      card.status(`SDK로 3D 미리보기 만드는 중… ${Math.floor(sec/60)}분 ${sec%60}초`);
-      await sleep(10000);
+      // 실제 진행 단계를 알 수 없어 보통 걸리는 시간(약 3분)으로 어림잡는다
+      card.prog(50 + 44 * (1 - Math.exp(-sec / 110)), `3/4 SDK로 3D 미리보기 만드는 중 ${Math.floor(sec/60)}분 ${sec%60}초`);
+      await sleep(5000);
       glb = await ghRaw(`outbox/${id}.glb`);
       if (glb) break;
       const err = await ghRaw(`outbox/${id}.error.txt`);
@@ -268,12 +348,14 @@ async function handle(file) {
 
     // ⑤ 미리보기도 드라이브에
     let note = '';
+    card.prog(95, '4/4 미리보기를 드라이브에 저장하는 중');
     if (googleReady()) card.link('3D 미리보기', await driveUpload(glb, base + '_미리보기.glb', 'model/gltf-binary'));
     else note = ' (로그인이 만료돼서 드라이브 저장은 건너뜀)';
 
     const url = URL.createObjectURL(glb);
     card.el.classList.add('ready');
     const b = document.createElement('span'); b.className = 'badge3d'; b.textContent = '3D'; box.appendChild(b);
+    card.prog(100);
     card.status(`완료 · 미리보기 ${fmt(glb.size)} · 눌러서 3D로 보기${note}`);
     card.el.addEventListener('click', ev => {
       if (ev.target.tagName === 'A') return;
@@ -286,6 +368,19 @@ async function handle(file) {
   }
 }
 
+const mv = $('mv');
+$('fov').addEventListener('input', () => {
+  const v = $('fov').value;
+  $('fovv').textContent = v + '°';
+  mv.fieldOfView = v + 'deg';
+  // 원근감을 바꿔도 모델이 화면에 꽉 차게 거리를 다시 맞춘다
+  const o = mv.getCameraOrbit();
+  mv.cameraOrbit = `${o.theta}rad ${o.phi}rad auto`;
+});
+document.querySelectorAll('.vctl [data-orbit]').forEach(b => b.onclick = () => {
+  mv.cameraOrbit = b.dataset.orbit;
+  mv.cameraTarget = 'auto auto auto';
+});
 $('vclose').onclick = () => $('viewer').classList.remove('open');
 $('viewer').addEventListener('click', ev => { if (ev.target.id === 'viewer') $('viewer').classList.remove('open'); });
 
