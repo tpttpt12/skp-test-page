@@ -4,26 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SKP 3D 미리보기 테스트</title>
-<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async onload="initGoogle()"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
 <style>
   :root { --line:#e2e8f0; --ink:#0f172a; --sub:#64748b; --blue:#3b82f6; --bg:#f8fafc; --red:#ef4444; --green:#16a34a; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; color:var(--ink); background:var(--bg); }
-  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   header h1 { margin:0; font-size:17px; }
   .spacer { flex:1; }
-  button { font:inherit; font-size:13px; font-weight:600; border-radius:8px; border:1px solid var(--line); background:#fff; padding:7px 12px; cursor:pointer; }
+  button { font:inherit; font-size:13px; font-weight:600; border-radius:8px; border:1px solid var(--line); background:#fff; padding:7px 12px; cursor:pointer; color:var(--ink); }
+  button:hover { background:#f8fafc; }
   button.primary { background:var(--blue); border-color:var(--blue); color:#fff; }
-  input[type=password] { font:inherit; font-size:13px; border:1px solid var(--line); border-radius:8px; padding:7px 10px; width:260px; }
-  .pill { font-size:12px; padding:3px 8px; border-radius:99px; background:#f1f5f9; color:var(--sub); }
+  button.on { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+  input[type=password], input[type=search] { font:inherit; font-size:13px; border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  input[type=password] { width:240px; }
+  .pill { font-size:12px; padding:3px 8px; border-radius:99px; background:#f1f5f9; color:var(--sub); white-space:nowrap; }
   .pill.ok { background:#dcfce7; color:var(--green); }
-  main { padding:24px; max-width:1100px; margin:0 auto; }
-  #drop { border:2px dashed #cbd5e1; border-radius:12px; background:#fff; padding:36px; text-align:center; cursor:pointer; }
+  .pill.warn { background:#fef3c7; color:#b45309; }
+  main { padding:24px; max-width:1200px; margin:0 auto; }
+  #drop { border:2px dashed #cbd5e1; border-radius:12px; background:#fff; padding:30px; text-align:center; cursor:pointer; }
   #drop.over { border-color:var(--blue); background:#eff6ff; }
   #drop strong { display:block; font-size:15px; margin-bottom:6px; }
   #drop span { font-size:13px; color:var(--sub); }
-  #grid { margin-top:24px; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
+  .listhead { display:flex; align-items:center; gap:10px; margin-top:24px; font-size:14px; font-weight:700; }
+  .listhead .pill { font-weight:500; }
+  #grid { margin-top:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
   .card { background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
   .card.ready { cursor:pointer; }
   .card.ready:hover { border-color:var(--blue); }
@@ -35,28 +46,54 @@
   .name { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .status { font-size:12px; color:var(--sub); margin-top:4px; line-height:1.5; }
   .status.err { color:var(--red); }
-  .links { font-size:12px; margin-top:4px; }
-  .links a { color:var(--blue); margin-right:8px; text-decoration:none; }
-  #viewer { position:fixed; inset:0; background:rgba(15,23,42,.7); display:none; align-items:center; justify-content:center; z-index:50; }
-  #viewer.open { display:flex; }
-  #viewer .box { background:#fff; border-radius:12px; width:min(1000px,94vw); height:min(700px,88vh); display:flex; flex-direction:column; overflow:hidden; }
-  #viewer .bar { display:flex; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; font-weight:700; }
-  #viewer model-viewer { flex:1; width:100%; background:#f1f5f9; }
-  .prog { height:6px; background:#e2e8f0; border-radius:99px; overflow:hidden; margin-top:8px; }
+  .links { font-size:12px; margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .links a { color:var(--blue); text-decoration:none; }
+  .links button { padding:3px 8px; font-size:12px; }
+  .prog { height:6px; background:#e2e8f0; border-radius:99px; overflow:hidden; margin-top:8px; display:none; }
+  .prog.show { display:block; }
   .prog > i { display:block; height:100%; width:0; background:var(--blue); transition:width .4s; }
   .prog.done > i { background:var(--green); }
   .prog.err > i { background:var(--red); }
+  .hint { font-size:12px; color:var(--sub); margin-top:12px; line-height:1.6; }
+
+  #viewer { position:fixed; inset:0; background:rgba(15,23,42,.7); display:none; align-items:center; justify-content:center; z-index:50; }
+  #viewer.open { display:flex; }
+  #viewer .box { background:#fff; border-radius:12px; width:min(1280px,96vw); height:min(820px,92vh); display:flex; flex-direction:column; overflow:hidden; }
+  #viewer .bar { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; font-weight:700; }
+  #viewer .body { flex:1; display:flex; min-height:0; }
+  #stage { flex:1; position:relative; background:#f1f5f9; min-width:0; }
+  #stage canvas { display:block; width:100%; height:100%; }
+  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--sub); background:#f1f5f9; }
+  #side { width:280px; border-left:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .tabs { display:flex; border-bottom:1px solid var(--line); }
+  .tabs button { flex:1; border:0; border-radius:0; border-bottom:2px solid transparent; padding:10px 0; color:var(--sub); background:#fff; }
+  .tabs button.on { color:var(--ink); border-bottom-color:var(--blue); background:#fff; }
+  .pane { flex:1; overflow:auto; padding:8px; display:none; font-size:13px; }
+  .pane.on { display:block; }
+  .pane .empty { color:var(--sub); font-size:12px; padding:12px 6px; line-height:1.6; }
+  .row { display:flex; align-items:center; gap:6px; padding:5px 6px; border-radius:6px; cursor:pointer; user-select:none; }
+  .row:hover { background:#f1f5f9; }
+  .row .eye { width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:5px; color:#334155; flex:none; }
+  .row.off { color:#94a3b8; }
+  .row.off .eye { color:#cbd5e1; }
+  .row .label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row .tw { width:14px; flex:none; color:#94a3b8; font-size:10px; text-align:center; }
+  .scene { padding:8px 10px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; cursor:pointer; }
+  .scene:hover { border-color:var(--blue); background:#eff6ff; }
+  .scene small { display:block; color:var(--sub); font-size:11px; margin-top:2px; }
+  .paneTools { display:flex; gap:6px; margin-bottom:6px; }
+  .paneTools button { padding:4px 8px; font-size:12px; }
+  .paneTools input { flex:1; min-width:0; padding:4px 8px; font-size:12px; }
   .vctl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 14px; border-top:1px solid var(--line); font-size:12px; color:var(--sub); }
-  .vctl input[type=range] { width:160px; }
+  .vctl input[type=range] { width:150px; }
   .vctl button { padding:5px 10px; font-size:12px; }
-  .hint { font-size:12px; color:var(--sub); margin-top:14px; line-height:1.6; }
 </style>
 </head>
 <body>
 <header>
   <h1>SKP 3D 미리보기 테스트</h1>
   <span class="spacer"></span>
-  <span id="gstate" class="pill">구글 로그인 전</span>
+  <span id="gstate" class="pill">드라이브 연결 전</span>
   <button id="glogin" class="primary">구글 드라이브 연결</button>
   <input id="pat" type="password" placeholder="깃허브 토큰 (github_pat_...)">
   <span id="pstate" class="pill">토큰 없음</span>
@@ -67,45 +104,90 @@
     <span>원본은 구글 드라이브에 올라가고, 썸네일은 바로 뜨고, 3D 미리보기는 변환이 끝나면 생겨요</span>
     <input id="file" type="file" accept=".skp" multiple hidden>
   </div>
-  <p class="hint">흐름: ① 썸네일 추출(브라우저) → ② 원본·썸네일을 구글 드라이브 "<span id="fname"></span>" 폴더에 저장 → ③ 깃허브 변환기에 보냄 → ④ SketchUp SDK가 glb로 변환(보통 2~4분) → ⑤ 미리보기 glb도 드라이브에 저장 → 카드를 누르면 3D로 보기</p>
+  <div class="listhead">드라이브의 에셋 <span id="count" class="pill">0개</span><span class="spacer"></span><button id="reload">새로 불러오기</button></div>
   <div id="grid"></div>
+  <p class="hint">원본·3D 미리보기는 구글 드라이브 "<span id="fname"></span>" 폴더에 저장돼요. 구글 연결은 보안 때문에 1시간마다 만료되니, 만료되면 "다시 연결"만 눌러 주세요.</p>
 </main>
 
 <div id="viewer">
   <div class="box">
     <div class="bar"><span id="vtitle"></span><span class="spacer"></span><button id="vclose">닫기</button></div>
-    <model-viewer id="mv" camera-controls touch-action="pan-y" shadow-intensity="0.6" exposure="1" tone-mapping="neutral"
-      field-of-view="35deg" min-field-of-view="5deg" max-field-of-view="90deg"
-      min-camera-orbit="auto 0deg auto" max-camera-orbit="auto 180deg auto"></model-viewer>
+    <div class="body">
+      <div id="stage"><div id="loading">불러오는 중…</div></div>
+      <div id="side">
+        <div class="tabs">
+          <button data-tab="scenes" class="on">장면</button>
+          <button data-tab="tags">태그</button>
+          <button data-tab="groups">그룹</button>
+        </div>
+        <div class="pane on" id="pane-scenes"></div>
+        <div class="pane" id="pane-tags"></div>
+        <div class="pane" id="pane-groups"></div>
+      </div>
+    </div>
     <div class="vctl">
+      <button id="ortho">평행 투영</button>
       <span>원근감</span>
       <input id="fov" type="range" min="5" max="90" value="35">
       <span id="fovv">35°</span>
       <span class="spacer"></span>
-      <button data-orbit="auto auto auto">처음 시점</button>
-      <button data-orbit="0deg 90deg auto">정면</button>
-      <button data-orbit="90deg 90deg auto">측면</button>
-      <button data-orbit="0deg 0deg auto">윗면</button>
+      <button id="lines" class="on">선 보이기</button>
+      <button data-view="fit">전체 보기</button>
+      <button data-view="front">정면</button>
+      <button data-view="side">측면</button>
+      <button data-view="top">윗면</button>
     </div>
   </div>
 </div>
 
-<script>
-// ===== 여기 세 줄만 내 정보로 바꾸세요 =====
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+// ===== 설정 =====
 const CONFIG = {
   GOOGLE_CLIENT_ID: '821074187425-jc0chai4gl6lam10j9umgsra8276tgm7.apps.googleusercontent.com',
   GITHUB_OWNER: 'tpttpt12',
   GITHUB_REPO: 'skp-converter',
   DRIVE_FOLDER_NAME: 'REFA 3D 테스트',
 };
-// ==========================================
+// ================
 
 const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
 $('fname').textContent = CONFIG.DRIVE_FOLDER_NAME;
-let gToken = null, gExp = 0, tokenClient = null, folderId = null;
+const fmt = n => n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ---------- 구글 로그인 ----------
-function initGoogle() {
+// =====================================================================
+// 구글 로그인 (토큰을 저장해서 새로고침해도 1시간 동안 유지)
+// =====================================================================
+let gToken = null, gExp = 0, tokenClient = null, folderId = null;
+const saved = store.get('skp_g');
+if (saved && saved.exp > Date.now()) { gToken = saved.t; gExp = saved.exp; }
+const googleReady = () => gToken && Date.now() < gExp;
+
+function showG() {
+  if (googleReady()) {
+    const min = Math.max(1, Math.round((gExp - Date.now()) / 60000));
+    $('gstate').textContent = `드라이브 연결됨 (${min}분 남음)`; $('gstate').className = 'pill ok';
+    $('glogin').textContent = '다시 연결'; $('glogin').className = '';
+  } else {
+    $('gstate').textContent = gToken ? '연결 만료됨' : '드라이브 연결 전';
+    $('gstate').className = gToken ? 'pill warn' : 'pill';
+    $('glogin').textContent = gToken ? '다시 연결' : '구글 드라이브 연결'; $('glogin').className = 'primary';
+  }
+}
+setInterval(showG, 30000);
+showG();
+
+(function waitGoogle() {
+  if (!(window.google && google.accounts && google.accounts.oauth2)) return setTimeout(waitGoogle, 200);
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.GOOGLE_CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/drive.file',
@@ -113,32 +195,33 @@ function initGoogle() {
       if (r.error) { alert('구글 로그인 실패: ' + r.error); return; }
       gToken = r.access_token;
       gExp = Date.now() + (r.expires_in - 60) * 1000;
-      $('gstate').textContent = '드라이브 연결됨';
-      $('gstate').className = 'pill ok';
+      store.set('skp_g', { t: gToken, exp: gExp });
+      showG();
+      loadDrive();
     },
   });
-}
+})();
 $('glogin').onclick = () => {
-  if (!tokenClient) { alert('구글 로그인 스크립트를 아직 불러오는 중이에요. 잠시 후 다시 눌러 주세요.'); return; }
+  if (!tokenClient) { alert('구글 로그인 준비 중이에요. 잠시 후 다시 눌러 주세요.'); return; }
   tokenClient.requestAccessToken({ prompt: '' });
 };
-const googleReady = () => gToken && Date.now() < gExp;
 
-// ---------- 깃허브 토큰 ----------
-let pat = '';
-try { pat = localStorage.getItem('skp_test_pat') || ''; } catch (e) {}
+// 깃허브 토큰
+let pat = store.get('skp_test_pat') || '';
+try { if (!pat) pat = localStorage.getItem('skp_test_pat') || ''; } catch (e) {}
 $('pat').value = pat;
 function refreshPat() {
   pat = $('pat').value.trim();
-  try { localStorage.setItem('skp_test_pat', pat); } catch (e) {}
+  store.set('skp_test_pat', pat);
   $('pstate').textContent = pat ? '토큰 입력됨' : '토큰 없음';
   $('pstate').className = pat ? 'pill ok' : 'pill';
 }
 $('pat').addEventListener('input', refreshPat);
 refreshPat();
 
-// ---------- skp 안의 PNG 썸네일 꺼내기 ----------
-// 최신 스케치업 파일은 썸네일이 압축 묶음(deflate) 안에 들어 있어서 풀어서 꺼낸다
+// =====================================================================
+// skp 썸네일 꺼내기 (최신 파일은 압축 묶음 안에 들어 있어서 풀어서 꺼냄)
+// =====================================================================
 const SIG = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
 function findSig(b) {
   outer: for (let i = 0; i <= b.length - 8; i++) {
@@ -152,16 +235,27 @@ function iendEnd(b) {
     if (b[i] === 0x49 && b[i+1] === 0x45 && b[i+2] === 0x4E && b[i+3] === 0x44) return i + 8;
   return -1;
 }
+function plainPng(b, start) {
+  let p = start + 8;
+  while (p + 12 <= b.length) {
+    const len = (b[p]<<24 | b[p+1]<<16 | b[p+2]<<8 | b[p+3]) >>> 0;
+    const type = String.fromCharCode(b[p+4], b[p+5], b[p+6], b[p+7]);
+    p += 12 + len;
+    if (type === 'IEND') return b.slice(start, p);
+    if (!/^[A-Za-z]{4}$/.test(type)) return null;
+  }
+  return null;
+}
 async function extractThumb(b) {
   const s = findSig(b);
   if (s < 0) return null;
   const h = s - 5;
-  const storedBlock = h >= 0 && (b[h] & 0xFE) === 0 && ((b[h+1] | b[h+2] << 8) ^ (b[h+3] | b[h+4] << 8)) === 0xFFFF;
-  if (storedBlock && 'DecompressionStream' in window) {
+  const stored = h >= 0 && (b[h] & 0xFE) === 0 && ((b[h+1] | b[h+2] << 8) ^ (b[h+3] | b[h+4] << 8)) === 0xFFFF;
+  if (stored && 'DecompressionStream' in window) {
     try {
       const ds = new DecompressionStream('deflate-raw');
       const w = ds.writable.getWriter();
-      w.write(b.subarray(h, Math.min(b.length, h + 16 * 1024 * 1024))).catch(() => {});
+      w.write(b.subarray(h)).catch(() => {});
       w.close().catch(() => {});
       const r = ds.readable.getReader();
       let buf = new Uint8Array(0);
@@ -172,38 +266,24 @@ async function extractThumb(b) {
           const nb = new Uint8Array(buf.length + value.length); nb.set(buf); nb.set(value, buf.length); buf = nb;
           const e = iendEnd(buf);
           if (e > 0) { r.cancel().catch(() => {}); return buf.slice(0, e); }
-          if (buf.length > 8 * 1024 * 1024) break;
+          if (buf.length > 8e6) break;
         }
       } catch (e) {}
       const e = iendEnd(buf);
       if (e > 0) return buf.slice(0, e);
     } catch (e) {}
   }
-  return extractPng(b);
-}
-function extractPng(b) {
-  let start = -1;
-  outer: for (let i = 0; i <= b.length - 8; i++) {
-    for (let j = 0; j < 8; j++) if (b[i+j] !== SIG[j]) continue outer;
-    start = i; break;
-  }
-  if (start < 0) return null;
-  let p = start + 8;
-  while (p + 12 <= b.length) {
-    const len = (b[p]<<24 | b[p+1]<<16 | b[p+2]<<8 | b[p+3]) >>> 0;
-    const type = String.fromCharCode(b[p+4], b[p+5], b[p+6], b[p+7]);
-    p += 12 + len;
-    if (type === 'IEND') return b.slice(start, p);
-    if (len > b.length) break;
-  }
-  return null;
+  return plainPng(b, s);
 }
 
-// ---------- 구글 드라이브 ----------
+// =====================================================================
+// 구글 드라이브
+// =====================================================================
 async function gfetch(url, opts = {}) {
+  if (!googleReady()) throw new Error('구글 드라이브 연결이 만료됐어요. 위에서 "다시 연결"을 눌러 주세요.');
   opts.headers = { ...(opts.headers || {}), Authorization: 'Bearer ' + gToken };
   const r = await fetch(url, opts);
-  if (!r.ok) throw new Error('드라이브 오류 ' + r.status + ': ' + (await r.text()).slice(0, 200));
+  if (!r.ok && r.status !== 206) throw new Error('드라이브 오류 ' + r.status + ': ' + (await r.text()).slice(0, 200));
   return r;
 }
 async function getFolder() {
@@ -217,17 +297,17 @@ async function getFolder() {
   })).json();
   return folderId = c.id;
 }
-async function driveUpload(blob, name, mime, onProg) {
+async function listFolder() {
   const parent = await getFolder();
-  const init = await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime },
-    body: JSON.stringify({ name, parents: [parent] }),
-  });
-  const loc = init.headers.get('Location');
-  if (!loc) throw new Error('드라이브 업로드 주소를 받지 못했어요');
-  const res = await xhr('PUT', loc, { 'Content-Type': mime }, blob, onProg);
-  return JSON.parse(res).id;
+  let all = [], token = '';
+  do {
+    const q = encodeURIComponent(`'${parent}' in parents and trashed=false`);
+    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,name,size,createdTime,appProperties)&orderBy=${encodeURIComponent('createdTime desc')}` + (token ? '&pageToken=' + token : '');
+    const j = await (await gfetch(url)).json();
+    all = all.concat(j.files || []);
+    token = j.nextPageToken || '';
+  } while (token);
+  return all;
 }
 function xhr(method, url, headers, body, onProg) {
   return new Promise((ok, no) => {
@@ -240,8 +320,30 @@ function xhr(method, url, headers, body, onProg) {
     x.send(body);
   });
 }
+async function driveUpload(blob, name, mime, appProperties, onProg) {
+  const parent = await getFolder();
+  const init = await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime },
+    body: JSON.stringify({ name, parents: [parent], appProperties: appProperties || {} }),
+  });
+  const loc = init.headers.get('Location');
+  if (!loc) throw new Error('드라이브 업로드 주소를 받지 못했어요');
+  return JSON.parse(await xhr('PUT', loc, { 'Content-Type': mime }, blob, onProg)).id;
+}
+async function driveSetProps(id, appProperties) {
+  await gfetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ appProperties }),
+  });
+}
+async function driveGet(id, range) {
+  const headers = range ? { Range: 'bytes=0-' + (range - 1) } : {};
+  return (await gfetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, { headers })).arrayBuffer();
+}
 
-// ---------- 깃허브 변환기 ----------
+// =====================================================================
+// 깃허브 변환기
+// =====================================================================
 const ghBase = () => `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/contents/`;
 function blobToB64(blob) {
   return new Promise((ok, no) => {
@@ -256,133 +358,178 @@ async function ghPut(path, blob, message, onProg) {
   await xhr('PUT', ghBase() + path, { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body, onProg);
 }
 async function ghRaw(path) {
-  const r = await fetch(ghBase() + path, {
-    headers: { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github.raw' },
-    cache: 'no-store',
-  });
+  const r = await fetch(ghBase() + path, { headers: { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github.raw' }, cache: 'no-store' });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error('깃허브 오류 ' + r.status);
   return r.blob();
 }
 
-// ---------- 화면 ----------
-const fmt = n => n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB';
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-function makeCard(file) {
+// =====================================================================
+// 카드
+// =====================================================================
+const cards = new Map();  // skp 드라이브 id -> card
+function makeCard(name, top) {
   const el = document.createElement('div');
   el.className = 'card';
-  el.innerHTML = '<div class="thumb"><div class="none">읽는 중…</div></div><div class="meta"><div class="name"></div><div class="status"></div><div class="prog"><i></i></div><div class="links"></div></div>';
-  el.querySelector('.name').textContent = file.name;
-  $('grid').prepend(el);
-  return {
-    el,
-    pct: 0,
+  el.innerHTML = '<div class="thumb"><div class="none">썸네일 불러오는 중…</div></div><div class="meta"><div class="name"></div><div class="status"></div><div class="prog"><i></i></div><div class="links"></div></div>';
+  el.querySelector('.name').textContent = name;
+  el.querySelector('.name').title = name;
+  top ? $('grid').prepend(el) : $('grid').appendChild(el);
+  const c = {
+    el, name, pct: 0, model: null,
     status(t, err) {
       const s = el.querySelector('.status'); s.textContent = t; s.className = 'status' + (err ? ' err' : '');
-      if (err) el.querySelector('.prog').className = 'prog err';
+      if (err) el.querySelector('.prog').classList.add('err');
     },
     prog(p, t) {
+      const bar = el.querySelector('.prog'); bar.classList.add('show');
       this.pct = Math.max(this.pct, Math.min(100, p));
-      el.querySelector('.prog > i').style.width = this.pct + '%';
-      if (this.pct >= 100) el.querySelector('.prog').className = 'prog done';
+      bar.querySelector('i').style.width = this.pct + '%';
+      if (this.pct >= 100) bar.classList.add('done');
       if (t) this.status(`${t} · ${Math.floor(this.pct)}%`);
     },
-    link(label, id) {
-      const a = document.createElement('a');
-      a.href = `https://drive.google.com/file/d/${id}/view`; a.target = '_blank'; a.textContent = label;
-      el.querySelector('.links').appendChild(a);
+    thumb(pngBytes) {
+      const box = el.querySelector('.thumb');
+      if (!pngBytes) { box.querySelector('.none') && (box.querySelector('.none').textContent = '썸네일 없음'); return; }
+      box.innerHTML = '';
+      const img = new Image(); img.src = URL.createObjectURL(new Blob([pngBytes], { type: 'image/png' })); box.appendChild(img);
+    },
+    links(skpId, glbId) {
+      const l = el.querySelector('.links'); l.innerHTML = '';
+      if (skpId) { const a = document.createElement('a'); a.href = `https://drive.google.com/file/d/${skpId}/view`; a.target = '_blank'; a.textContent = '드라이브 원본'; l.appendChild(a); }
+      if (glbId) { const a = document.createElement('a'); a.href = `https://drive.google.com/file/d/${glbId}/view`; a.target = '_blank'; a.textContent = '3D 미리보기 파일'; l.appendChild(a); }
+      return l;
+    },
+    ready(model) {
+      this.model = model;
+      el.classList.add('ready');
+      const box = el.querySelector('.thumb');
+      if (!box.querySelector('.badge3d')) { const b = document.createElement('span'); b.className = 'badge3d'; b.textContent = '3D'; box.appendChild(b); }
     },
   };
+  el.addEventListener('click', ev => {
+    if (ev.target.closest('a,button') || !c.model) return;
+    openViewer(c.name, c.model);
+  });
+  return c;
 }
 
-async function handle(file) {
-  const card = makeCard(file);
-  const box = card.el.querySelector('.thumb');
-
-  // ① 썸네일
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const png = await extractThumb(bytes);
-  let pngBlob = null;
-  if (png) {
-    pngBlob = new Blob([png], { type: 'image/png' });
-    box.innerHTML = '';
-    const img = new Image(); img.src = URL.createObjectURL(pngBlob); box.appendChild(img);
-  } else {
-    box.innerHTML = '<div class="none">썸네일 없음</div>';
-  }
-
-  if (!googleReady()) { card.status('구글 드라이브 연결 후 다시 넣어 주세요 (썸네일만 확인됨)', true); return; }
-  if (!pat) { card.status('깃허브 토큰을 넣고 다시 넣어 주세요 (썸네일만 확인됨)', true); return; }
-
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const base = file.name.replace(/\.skp$/i, '');
-
+// =====================================================================
+// 드라이브 목록 불러오기
+// =====================================================================
+let loading = false;
+async function loadDrive() {
+  if (!googleReady() || loading) return;
+  loading = true;
   try {
-    // ② 드라이브에 원본 + 썸네일
-    card.prog(5, `1/4 드라이브에 원본 올리는 중 (${fmt(file.size)})`);
-    const skpId = await driveUpload(file, file.name, 'application/octet-stream',
-      f => card.prog(5 + f * 30, `1/4 드라이브에 원본 올리는 중 (${fmt(file.size)})`));
-    card.link('원본', skpId);
-
-    // ③ 변환기로 보내기
-    card.prog(35, '2/4 변환기로 보내는 중');
-    await ghPut(`inbox/${id}.skp`, file, `변환 요청: ${file.name}`,
-      f => card.prog(35 + f * 15, '2/4 변환기로 보내는 중'));
-
-    // ④ 변환 결과 기다리기
-    const t0 = Date.now();
-    let glb = null;
-    while (Date.now() - t0 < 20 * 60 * 1000) {
-      const sec = Math.round((Date.now() - t0) / 1000);
-      // 실제 진행 단계를 알 수 없어 보통 걸리는 시간(약 3분)으로 어림잡는다
-      card.prog(50 + 44 * (1 - Math.exp(-sec / 110)), `3/4 SDK로 3D 미리보기 만드는 중 ${Math.floor(sec/60)}분 ${sec%60}초`);
-      await sleep(5000);
-      glb = await ghRaw(`outbox/${id}.glb`);
-      if (glb) break;
-      const err = await ghRaw(`outbox/${id}.error.txt`);
-      if (err) throw new Error('변환 실패: ' + (await err.text()).trim());
+    const files = await listFolder();
+    const byName = new Map(files.map(f => [f.name, f]));
+    const byId = new Map(files.map(f => [f.id, f]));
+    const skps = files.filter(f => /\.skp$/i.test(f.name));
+    $('count').textContent = skps.length + '개';
+    for (const f of skps) {
+      if (cards.has(f.id)) continue;
+      const c = makeCard(f.name, false);
+      cards.set(f.id, c);
+      const props = f.appProperties || {};
+      const base = f.name.replace(/\.skp$/i, '');
+      const glb = (props.glb && byId.get(props.glb)) || byName.get(base + '_미리보기.glb');
+      const info = props.info && byId.get(props.info);
+      c.links(f.id, glb && glb.id);
+      if (glb) {
+        c.ready({ glbId: glb.id, infoId: info && info.id });
+        c.status(`3D 미리보기 있음${glb.size ? ' · ' + fmt(+glb.size) : ''} · 눌러서 보기`);
+      } else if (props.job) {
+        resumeJob(c, f, props.job);
+      } else {
+        noPreview(c, f);
+      }
+      // 썸네일: 원본 앞부분만 받아서 꺼낸다
+      driveGet(f.id, 600 * 1024).then(buf => extractThumb(new Uint8Array(buf))).then(png => c.thumb(png)).catch(() => c.thumb(null));
     }
-    if (!glb) throw new Error('20분 안에 변환이 끝나지 않았어요. 깃허브 Actions 탭을 확인해 주세요.');
-    glb = new Blob([glb], { type: 'model/gltf-binary' });
-
-    // ⑤ 미리보기도 드라이브에
-    let note = '';
-    card.prog(95, '4/4 미리보기를 드라이브에 저장하는 중');
-    if (googleReady()) card.link('3D 미리보기', await driveUpload(glb, base + '_미리보기.glb', 'model/gltf-binary'));
-    else note = ' (로그인이 만료돼서 드라이브 저장은 건너뜀)';
-
-    const url = URL.createObjectURL(glb);
-    card.el.classList.add('ready');
-    const b = document.createElement('span'); b.className = 'badge3d'; b.textContent = '3D'; box.appendChild(b);
-    card.prog(100);
-    card.status(`완료 · 미리보기 ${fmt(glb.size)} · 눌러서 3D로 보기${note}`);
-    card.el.addEventListener('click', ev => {
-      if (ev.target.tagName === 'A') return;
-      $('vtitle').textContent = file.name;
-      $('mv').src = url;
-      $('viewer').classList.add('open');
-    });
   } catch (e) {
-    card.status(e.message, true);
+    alert(e.message);
+  } finally {
+    loading = false;
   }
 }
+$('reload').onclick = () => { $('grid').innerHTML = ''; cards.clear(); loadDrive(); };
 
-const mv = $('mv');
-$('fov').addEventListener('input', () => {
-  const v = $('fov').value;
-  $('fovv').textContent = v + '°';
-  mv.fieldOfView = v + 'deg';
-  // 원근감을 바꿔도 모델이 화면에 꽉 차게 거리를 다시 맞춘다
-  const o = mv.getCameraOrbit();
-  mv.cameraOrbit = `${o.theta}rad ${o.phi}rad auto`;
-});
-document.querySelectorAll('.vctl [data-orbit]').forEach(b => b.onclick = () => {
-  mv.cameraOrbit = b.dataset.orbit;
-  mv.cameraTarget = 'auto auto auto';
-});
-$('vclose').onclick = () => $('viewer').classList.remove('open');
-$('viewer').addEventListener('click', ev => { if (ev.target.id === 'viewer') $('viewer').classList.remove('open'); });
+function noPreview(c, f) {
+  c.status('3D 미리보기 없음');
+  const btn = document.createElement('button');
+  btn.textContent = '3D 만들기';
+  btn.onclick = async () => {
+    btn.remove();
+    try {
+      c.prog(2, '드라이브에서 원본 받는 중');
+      const blob = new Blob([await driveGet(f.id)]);
+      await convert(c, f.id, f.name, blob);
+    } catch (e) { c.status(e.message, true); }
+  };
+  c.el.querySelector('.links').appendChild(btn);
+}
+
+// =====================================================================
+// 새 파일 올리기 → 변환
+// =====================================================================
+async function handle(file) {
+  const c = makeCard(file.name, true);
+  c.thumb(await extractThumb(new Uint8Array(await file.arrayBuffer())));
+  if (!googleReady()) { c.status('구글 드라이브 연결 후 다시 넣어 주세요 (썸네일만 확인됨)', true); return; }
+  if (!pat) { c.status('깃허브 토큰을 넣고 다시 넣어 주세요 (썸네일만 확인됨)', true); return; }
+  try {
+    c.prog(3, `1/4 드라이브에 원본 올리는 중 (${fmt(file.size)})`);
+    const skpId = await driveUpload(file, file.name, 'application/octet-stream', {},
+      f => c.prog(3 + f * 32, `1/4 드라이브에 원본 올리는 중 (${fmt(file.size)})`));
+    cards.set(skpId, c);
+    $('count').textContent = cards.size + '개';
+    c.links(skpId);
+    await convert(c, skpId, file.name, file);
+  } catch (e) { c.status(e.message, true); }
+}
+
+async function convert(c, skpId, name, blob) {
+  if (!pat) throw new Error('깃허브 토큰을 넣어 주세요');
+  const job = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  c.prog(35, '2/4 변환기로 보내는 중');
+  await ghPut(`inbox/${job}.skp`, blob, `변환 요청: ${name}`, f => c.prog(35 + f * 15, '2/4 변환기로 보내는 중'));
+  await driveSetProps(skpId, { job, jobAt: String(Date.now()) });
+  await waitJob(c, skpId, name, job, Date.now());
+}
+
+async function resumeJob(c, f, job) {
+  if (!pat) { c.status('변환 중이던 파일이에요. 깃허브 토큰을 넣고 "새로 불러오기"를 눌러 주세요.'); return; }
+  try { await waitJob(c, f.id, f.name, job, +(f.appProperties.jobAt || Date.now())); }
+  catch (e) { c.status(e.message, true); }
+}
+
+async function waitJob(c, skpId, name, job, startedAt) {
+  let glb = null;
+  while (Date.now() - startedAt < 30 * 60 * 1000) {
+    const sec = Math.round((Date.now() - startedAt) / 1000);
+    // 실제 단계를 알 수 없어 보통 걸리는 시간(약 3~5분)으로 어림잡는다
+    c.prog(50 + 44 * (1 - Math.exp(-sec / 130)), `3/4 SDK로 3D 미리보기 만드는 중 ${Math.floor(sec/60)}분 ${sec%60}초`);
+    glb = await ghRaw(`outbox/${job}.glb`);
+    if (glb) break;
+    const err = await ghRaw(`outbox/${job}.error.txt`);
+    if (err) { await driveSetProps(skpId, { job: null }).catch(() => {}); throw new Error('변환 실패: ' + (await err.text()).trim()); }
+    await sleep(6000);
+  }
+  if (!glb) throw new Error('30분 안에 변환이 끝나지 않았어요. 깃허브 Actions 탭을 확인해 주세요.');
+  const info = await ghRaw(`outbox/${job}.json`);
+  const base = name.replace(/\.skp$/i, '');
+
+  c.prog(95, '4/4 미리보기를 드라이브에 저장하는 중');
+  const glbId = await driveUpload(glb, base + '_미리보기.glb', 'model/gltf-binary', { source: skpId });
+  const infoId = info ? await driveUpload(info, base + '_정보.json', 'application/json', { source: skpId }) : null;
+  await driveSetProps(skpId, { glb: glbId, info: infoId, job: null });
+
+  c.prog(100);
+  c.links(skpId, glbId);
+  c.ready({ glbBlob: glb, infoBlob: info, glbId, infoId });
+  c.status(`완료 · 미리보기 ${fmt(glb.size)} · 눌러서 3D로 보기`);
+}
 
 const drop = $('drop'), input = $('file');
 drop.addEventListener('click', () => input.click());
@@ -390,6 +537,272 @@ input.addEventListener('change', () => { [...input.files].forEach(handle); input
 ['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
 ['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', ev => [...ev.dataTransfer.files].filter(f => /\.skp$/i.test(f.name)).forEach(handle));
+
+// =====================================================================
+// 3D 뷰어 (three.js)
+// =====================================================================
+const stage = $('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+stage.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf1f5f9);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa3ad, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(0.6, 1, 0.4);
+scene.add(sun);
+
+const persp = new THREE.PerspectiveCamera(35, 1, 0.01, 1000);
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
+let camera = persp;
+let controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+let root = null, info = null, radius = 1, center = new THREE.Vector3();
+let tagOn = [], groupOn = [], showLines = true;
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  persp.aspect = w / h; persp.updateProjectionMatrix();
+  updateOrtho();
+}
+function orthoHeightFor(dist) { return 2 * dist * Math.tan(THREE.MathUtils.degToRad(persp.fov) / 2); }
+function updateOrtho(height) {
+  const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+  const H = height || ortho.userData.h || 2;
+  ortho.userData.h = H;
+  ortho.left = -H * w / h / 2; ortho.right = H * w / h / 2; ortho.top = H / 2; ortho.bottom = -H / 2;
+  ortho.near = -radius * 50; ortho.far = radius * 50;
+  ortho.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+(function loop() {
+  requestAnimationFrame(loop);
+  if (!$('viewer').classList.contains('open')) return;
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+function useCamera(cam) {
+  const pos = camera.position.clone(), target = controls.target.clone();
+  if (cam === ortho && camera === persp) updateOrtho(orthoHeightFor(pos.distanceTo(target)));
+  if (cam === persp && camera === ortho) {
+    // 평행 투영에서 보던 크기에 맞춰 원근 카메라 거리를 되돌린다
+    const dir = pos.clone().sub(target).normalize();
+    const dist = (ortho.userData.h / ortho.zoom) / 2 / Math.tan(THREE.MathUtils.degToRad(persp.fov) / 2);
+    pos.copy(target).add(dir.multiplyScalar(dist));
+  }
+  ortho.zoom = 1; ortho.updateProjectionMatrix();
+  camera = cam;
+  camera.position.copy(pos);
+  controls.dispose();
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.copy(target);
+  $('ortho').classList.toggle('on', camera === ortho);
+}
+
+function setView(dir) {
+  const d = dir === 'front' ? new THREE.Vector3(0, 0, 1)
+          : dir === 'side'  ? new THREE.Vector3(1, 0, 0)
+          : dir === 'top'   ? new THREE.Vector3(0, 1, 0.0001)
+          : new THREE.Vector3(1, 0.7, 1.2);
+  const dist = radius / Math.sin(THREE.MathUtils.degToRad(persp.fov) / 2) * 1.05;
+  controls.target.copy(center);
+  camera.position.copy(center).add(d.normalize().multiplyScalar(dist));
+  persp.near = Math.max(0.001, radius / 2000); persp.far = radius * 100; persp.updateProjectionMatrix();
+  if (camera === ortho) updateOrtho(radius * 2.2);
+  controls.update();
+}
+
+function applySceneCamera(cam) {
+  if (!cam) return;
+  const eye = new THREE.Vector3(...cam.eye), target = new THREE.Vector3(...cam.target);
+  if (cam.perspective) {
+    if (camera !== persp) useCamera(persp);
+    persp.fov = Math.min(90, Math.max(5, cam.fov || 35));
+    $('fov').value = Math.round(persp.fov); $('fovv').textContent = Math.round(persp.fov) + '°';
+    persp.near = Math.max(0.001, radius / 2000); persp.updateProjectionMatrix();
+  } else {
+    if (camera !== ortho) useCamera(ortho);
+    updateOrtho(cam.orthoHeight || radius * 2);
+  }
+  camera.position.copy(eye);
+  controls.target.copy(target);
+  controls.update();
+}
+
+function updateVisibility() {
+  if (!root) return;
+  const partByNode = new Map((info && info.parts || []).map(p => [p.node, p]));
+  const groupVisible = g => { while (g >= 0) { if (groupOn[g] === false) return false; g = info.groups[g].parent; } return true; };
+  root.traverse(o => {
+    if (o.isLine || o.isLineSegments) o.visible = showLines;
+    const p = partByNode.get(o.name);
+    if (p) o.visible = groupVisible(p.group) && p.tags.every(t => tagOn[t] !== false);
+  });
+}
+
+const EYE_ON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.5 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2"/></svg>';
+
+function rowEl(label, on, onToggle, depth, twisty) {
+  const r = document.createElement('div');
+  r.className = 'row' + (on ? '' : ' off');
+  r.style.paddingLeft = (6 + (depth || 0) * 16) + 'px';
+  r.innerHTML = `<span class="tw">${twisty || ''}</span><span class="eye">${on ? EYE_ON : EYE_OFF}</span><span class="label"></span>`;
+  r.querySelector('.label').textContent = label;
+  r.querySelector('.label').title = label;
+  r.onclick = ev => {
+    if (ev.target.closest('.tw') && twisty) return;
+    const now = onToggle();
+    r.classList.toggle('off', !now);
+    r.querySelector('.eye').innerHTML = now ? EYE_ON : EYE_OFF;
+  };
+  return r;
+}
+
+function buildPanels() {
+  const ps = $('pane-scenes'), pt = $('pane-tags'), pg = $('pane-groups');
+  ps.innerHTML = pt.innerHTML = pg.innerHTML = '';
+  if (!info) {
+    const msg = '<div class="empty">이 미리보기는 예전 방식으로 만들어져서 장면·태그·그룹 정보가 없어요. 카드의 "3D 만들기"로 다시 만들면 생겨요.</div>';
+    ps.innerHTML = pt.innerHTML = pg.innerHTML = msg;
+    return;
+  }
+  // 장면
+  const scenesList = (info.scenes && info.scenes.list) || [];
+  const cur = info.scenes && info.scenes.current;
+  if (cur) {
+    const d = document.createElement('div'); d.className = 'scene';
+    d.innerHTML = '<b>저장할 때 보던 시점</b><small>스케치업에서 마지막으로 보던 화면</small>';
+    d.onclick = () => applySceneCamera(cur);
+    ps.appendChild(d);
+  }
+  if (!scenesList.length) ps.insertAdjacentHTML('beforeend', '<div class="empty">이 파일에는 저장된 장면이 없어요.</div>');
+  scenesList.forEach(sc => {
+    const d = document.createElement('div'); d.className = 'scene';
+    d.innerHTML = '<b></b><small></small>';
+    d.querySelector('b').textContent = sc.name || '장면';
+    d.querySelector('small').textContent = sc.camera ? (sc.camera.perspective ? '원근' : '평행 투영') + (sc.useHiddenTags ? ' · 태그 상태 포함' : '') : '시점 없음';
+    d.onclick = () => {
+      applySceneCamera(sc.camera);
+      if (sc.useHiddenTags) {
+        tagOn = info.tags.map((t, i) => !sc.hiddenTags.includes(i));
+        buildTagPane(); updateVisibility();
+      }
+    };
+    ps.appendChild(d);
+  });
+  buildTagPane();
+  // 그룹 (바깥 두 단계)
+  const tools = document.createElement('div'); tools.className = 'paneTools';
+  tools.innerHTML = '<input type="search" placeholder="그룹 이름 검색"><button>모두 보이기</button>';
+  pg.appendChild(tools);
+  const listEl = document.createElement('div'); pg.appendChild(listEl);
+  const kids = new Map();
+  info.groups.forEach((g, i) => { if (!kids.has(g.parent)) kids.set(g.parent, []); kids.get(g.parent).push(i); });
+  const open = new Set();
+  function render(filter) {
+    listEl.innerHTML = '';
+    let n = 0;
+    const add = (i, depth) => {
+      if (n > 3000) return;
+      const g = info.groups[i];
+      const ch = kids.get(i) || [];
+      const match = !filter || g.name.toLowerCase().includes(filter);
+      if (match) {
+        const tw = ch.length ? (open.has(i) || filter ? '▼' : '▶') : '';
+        const r = rowEl(g.name, groupOn[i] !== false, () => { groupOn[i] = groupOn[i] === false; updateVisibility(); return groupOn[i]; }, filter ? 0 : depth, tw);
+        if (ch.length && !filter) r.querySelector('.tw').onclick = () => { open.has(i) ? open.delete(i) : open.add(i); render(filter); };
+        listEl.appendChild(r); n++;
+      }
+      if (filter || open.has(i)) ch.forEach(k => add(k, depth + 1));
+    };
+    (kids.get(-1) || []).forEach(i => add(i, 0));
+    if (!info.groups.length) listEl.innerHTML = '<div class="empty">그룹이 없어요.</div>';
+    else if (!n) listEl.innerHTML = '<div class="empty">찾는 그룹이 없어요.</div>';
+  }
+  tools.querySelector('input').oninput = e => render(e.target.value.trim().toLowerCase());
+  tools.querySelector('button').onclick = () => { groupOn = []; updateVisibility(); render(tools.querySelector('input').value.trim().toLowerCase()); };
+  render('');
+}
+function buildTagPane() {
+  const pt = $('pane-tags');
+  pt.innerHTML = '';
+  if (!info.tags.length) { pt.innerHTML = '<div class="empty">이 파일에는 태그가 없어요.</div>'; return; }
+  const tools = document.createElement('div'); tools.className = 'paneTools';
+  tools.innerHTML = '<button>모두 보이기</button><button>모두 끄기</button>';
+  tools.children[0].onclick = () => { tagOn = info.tags.map(() => true); buildTagPane(); updateVisibility(); };
+  tools.children[1].onclick = () => { tagOn = info.tags.map(() => false); buildTagPane(); updateVisibility(); };
+  pt.appendChild(tools);
+  info.tags.forEach((t, i) => pt.appendChild(rowEl(t.name, tagOn[i] !== false, () => { tagOn[i] = tagOn[i] === false; updateVisibility(); return tagOn[i]; })));
+}
+
+async function openViewer(name, model) {
+  $('vtitle').textContent = name;
+  $('viewer').classList.add('open');
+  $('loading').style.display = 'flex';
+  $('loading').textContent = '불러오는 중…';
+  resize();
+  try {
+    const glbBuf = model.glbBlob ? await model.glbBlob.arrayBuffer() : await driveGet(model.glbId);
+    let inf = null;
+    if (model.infoBlob) inf = JSON.parse(await model.infoBlob.text());
+    else if (model.infoId) inf = JSON.parse(new TextDecoder().decode(await driveGet(model.infoId)));
+    const gltf = await loader.parseAsync(glbBuf, '');
+    if (root) scene.remove(root);
+    root = gltf.scene;
+    root.traverse(o => {
+      if (o.isMesh) { o.material.polygonOffset = true; o.material.polygonOffsetFactor = 1; o.material.polygonOffsetUnits = 1; }
+      if (o.isLine || o.isLineSegments) o.material = new THREE.LineBasicMaterial({ color: 0x1e1e1e });
+    });
+    scene.add(root);
+    info = inf;
+    tagOn = info ? info.tags.map(t => t.visible !== false) : [];
+    groupOn = [];
+    const box = new THREE.Box3().setFromObject(root);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    center.copy(sphere.center); radius = sphere.radius || 1;
+    sun.position.copy(center).add(new THREE.Vector3(radius, radius * 2, radius * 0.8));
+    sun.target.position.copy(center); sun.target.updateMatrixWorld();
+    if (camera !== persp) useCamera(persp);
+    persp.fov = +$('fov').value; persp.updateProjectionMatrix();
+    buildPanels();
+    updateVisibility();
+    if (info && info.scenes && info.scenes.current) applySceneCamera(info.scenes.current); else setView('fit');
+    $('loading').style.display = 'none';
+  } catch (e) {
+    $('loading').textContent = '불러오지 못했어요: ' + e.message;
+  }
+}
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + b.dataset.tab));
+});
+$('fov').addEventListener('input', () => {
+  const v = +$('fov').value;
+  $('fovv').textContent = v + '°';
+  if (camera !== persp) useCamera(persp);
+  // 화면에 보이는 크기는 유지하면서 원근감만 바꾼다
+  const target = controls.target, dir = camera.position.clone().sub(target);
+  const visH = 2 * dir.length() * Math.tan(THREE.MathUtils.degToRad(persp.fov) / 2);
+  persp.fov = v; persp.updateProjectionMatrix();
+  const dist = visH / 2 / Math.tan(THREE.MathUtils.degToRad(v) / 2);
+  camera.position.copy(target).add(dir.normalize().multiplyScalar(dist));
+  persp.far = Math.max(persp.far, dist + radius * 4); persp.updateProjectionMatrix();
+});
+$('ortho').onclick = () => useCamera(camera === ortho ? persp : ortho);
+$('lines').onclick = () => { showLines = !showLines; $('lines').classList.toggle('on', showLines); $('lines').textContent = showLines ? '선 보이기' : '선 숨김'; updateVisibility(); };
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+$('vclose').onclick = () => $('viewer').classList.remove('open');
+
+// 시작할 때 연결돼 있으면 바로 불러오기
+if (googleReady()) loadDrive();
 </script>
 </body>
 </html>
