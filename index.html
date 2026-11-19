@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SKP 3D 미리보기 테스트</title>
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async onload="initGoogle()"></script>
+<style>
+  :root { --line:#e2e8f0; --ink:#0f172a; --sub:#64748b; --blue:#3b82f6; --bg:#f8fafc; --red:#ef4444; --green:#16a34a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:17px; }
+  .spacer { flex:1; }
+  button { font:inherit; font-size:13px; font-weight:600; border-radius:8px; border:1px solid var(--line); background:#fff; padding:7px 12px; cursor:pointer; }
+  button.primary { background:var(--blue); border-color:var(--blue); color:#fff; }
+  input[type=password] { font:inherit; font-size:13px; border:1px solid var(--line); border-radius:8px; padding:7px 10px; width:260px; }
+  .pill { font-size:12px; padding:3px 8px; border-radius:99px; background:#f1f5f9; color:var(--sub); }
+  .pill.ok { background:#dcfce7; color:var(--green); }
+  main { padding:24px; max-width:1100px; margin:0 auto; }
+  #drop { border:2px dashed #cbd5e1; border-radius:12px; background:#fff; padding:36px; text-align:center; cursor:pointer; }
+  #drop.over { border-color:var(--blue); background:#eff6ff; }
+  #drop strong { display:block; font-size:15px; margin-bottom:6px; }
+  #drop span { font-size:13px; color:var(--sub); }
+  #grid { margin-top:24px; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .card.ready { cursor:pointer; }
+  .card.ready:hover { border-color:var(--blue); }
+  .thumb { aspect-ratio:4/3; background:#f1f5f9; display:flex; align-items:center; justify-content:center; position:relative; }
+  .thumb img { width:100%; height:100%; object-fit:contain; }
+  .thumb .none { font-size:12px; color:#94a3b8; }
+  .badge3d { position:absolute; right:8px; top:8px; background:var(--blue); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px; }
+  .meta { padding:10px 12px; }
+  .name { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .status { font-size:12px; color:var(--sub); margin-top:4px; line-height:1.5; }
+  .status.err { color:var(--red); }
+  .links { font-size:12px; margin-top:4px; }
+  .links a { color:var(--blue); margin-right:8px; text-decoration:none; }
+  #viewer { position:fixed; inset:0; background:rgba(15,23,42,.7); display:none; align-items:center; justify-content:center; z-index:50; }
+  #viewer.open { display:flex; }
+  #viewer .box { background:#fff; border-radius:12px; width:min(1000px,94vw); height:min(700px,88vh); display:flex; flex-direction:column; overflow:hidden; }
+  #viewer .bar { display:flex; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; font-weight:700; }
+  #viewer model-viewer { flex:1; width:100%; background:#f1f5f9; }
+  .hint { font-size:12px; color:var(--sub); margin-top:14px; line-height:1.6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SKP 3D 미리보기 테스트</h1>
+  <span class="spacer"></span>
+  <span id="gstate" class="pill">구글 로그인 전</span>
+  <button id="glogin" class="primary">구글 드라이브 연결</button>
+  <input id="pat" type="password" placeholder="깃허브 토큰 (github_pat_...)">
+  <span id="pstate" class="pill">토큰 없음</span>
+</header>
+<main>
+  <div id="drop">
+    <strong>.skp 파일을 끌어다 놓거나 눌러서 선택하세요</strong>
+    <span>원본은 구글 드라이브에 올라가고, 썸네일은 바로 뜨고, 3D 미리보기는 변환이 끝나면 생겨요</span>
+    <input id="file" type="file" accept=".skp" multiple hidden>
+  </div>
+  <p class="hint">흐름: ① 썸네일 추출(브라우저) → ② 원본·썸네일을 구글 드라이브 "<span id="fname"></span>" 폴더에 저장 → ③ 깃허브 변환기에 보냄 → ④ SketchUp SDK가 glb로 변환(보통 2~4분) → ⑤ 미리보기 glb도 드라이브에 저장 → 카드를 누르면 3D로 보기</p>
+  <div id="grid"></div>
+</main>
+
+<div id="viewer">
+  <div class="box">
+    <div class="bar"><span id="vtitle"></span><span class="spacer"></span><button id="vclose">닫기</button></div>
+    <model-viewer id="mv" camera-controls touch-action="pan-y" shadow-intensity="0.6" exposure="1.1"></model-viewer>
+  </div>
+</div>
+
+<script>
+// ===== 여기 세 줄만 내 정보로 바꾸세요 =====
+const CONFIG = {
+  GOOGLE_CLIENT_ID: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+  GITHUB_OWNER: 'tpttpt12',
+  GITHUB_REPO: 'skp-converter',
+  DRIVE_FOLDER_NAME: 'REFA 3D 테스트',
+};
+// ==========================================
+
+const $ = id => document.getElementById(id);
+$('fname').textContent = CONFIG.DRIVE_FOLDER_NAME;
+let gToken = null, gExp = 0, tokenClient = null, folderId = null;
+
+// ---------- 구글 로그인 ----------
+function initGoogle() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CONFIG.GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    callback: r => {
+      if (r.error) { alert('구글 로그인 실패: ' + r.error); return; }
+      gToken = r.access_token;
+      gExp = Date.now() + (r.expires_in - 60) * 1000;
+      $('gstate').textContent = '드라이브 연결됨';
+      $('gstate').className = 'pill ok';
+    },
+  });
+}
+$('glogin').onclick = () => {
+  if (!tokenClient) { alert('구글 로그인 스크립트를 아직 불러오는 중이에요. 잠시 후 다시 눌러 주세요.'); return; }
+  tokenClient.requestAccessToken({ prompt: '' });
+};
+const googleReady = () => gToken && Date.now() < gExp;
+
+// ---------- 깃허브 토큰 ----------
+let pat = '';
+try { pat = localStorage.getItem('skp_test_pat') || ''; } catch (e) {}
+$('pat').value = pat;
+function refreshPat() {
+  pat = $('pat').value.trim();
+  try { localStorage.setItem('skp_test_pat', pat); } catch (e) {}
+  $('pstate').textContent = pat ? '토큰 입력됨' : '토큰 없음';
+  $('pstate').className = pat ? 'pill ok' : 'pill';
+}
+$('pat').addEventListener('input', refreshPat);
+refreshPat();
+
+// ---------- skp 안의 PNG 썸네일 꺼내기 ----------
+const SIG = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
+function extractPng(b) {
+  let start = -1;
+  outer: for (let i = 0; i <= b.length - 8; i++) {
+    for (let j = 0; j < 8; j++) if (b[i+j] !== SIG[j]) continue outer;
+    start = i; break;
+  }
+  if (start < 0) return null;
+  let p = start + 8;
+  while (p + 12 <= b.length) {
+    const len = (b[p]<<24 | b[p+1]<<16 | b[p+2]<<8 | b[p+3]) >>> 0;
+    const type = String.fromCharCode(b[p+4], b[p+5], b[p+6], b[p+7]);
+    p += 12 + len;
+    if (type === 'IEND') return b.slice(start, p);
+    if (len > b.length) break;
+  }
+  return null;
+}
+
+// ---------- 구글 드라이브 ----------
+async function gfetch(url, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), Authorization: 'Bearer ' + gToken };
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error('드라이브 오류 ' + r.status + ': ' + (await r.text()).slice(0, 200));
+  return r;
+}
+async function getFolder() {
+  if (folderId) return folderId;
+  const q = encodeURIComponent(`name='${CONFIG.DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const j = await (await gfetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`)).json();
+  if (j.files && j.files.length) return folderId = j.files[0].id;
+  const c = await (await gfetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: CONFIG.DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }),
+  })).json();
+  return folderId = c.id;
+}
+async function driveUpload(blob, name, mime) {
+  const parent = await getFolder();
+  const init = await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime },
+    body: JSON.stringify({ name, parents: [parent] }),
+  });
+  const loc = init.headers.get('Location');
+  if (!loc) throw new Error('드라이브 업로드 주소를 받지 못했어요');
+  const r = await fetch(loc, { method: 'PUT', headers: { 'Content-Type': mime }, body: blob });
+  if (!r.ok) throw new Error('드라이브 업로드 실패 ' + r.status);
+  return (await r.json()).id;
+}
+
+// ---------- 깃허브 변환기 ----------
+const ghBase = () => `https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/contents/`;
+function blobToB64(blob) {
+  return new Promise((ok, no) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(String(fr.result).split(',')[1]);
+    fr.onerror = no;
+    fr.readAsDataURL(blob);
+  });
+}
+async function ghPut(path, blob, message) {
+  const r = await fetch(ghBase() + path, {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github+json' },
+    body: JSON.stringify({ message, content: await blobToB64(blob) }),
+  });
+  if (!r.ok) throw new Error('깃허브 오류 ' + r.status + ': ' + (await r.text()).slice(0, 200));
+}
+async function ghRaw(path) {
+  const r = await fetch(ghBase() + path, {
+    headers: { Authorization: 'Bearer ' + pat, Accept: 'application/vnd.github.raw' },
+    cache: 'no-store',
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('깃허브 오류 ' + r.status);
+  return r.blob();
+}
+
+// ---------- 화면 ----------
+const fmt = n => n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function makeCard(file) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = '<div class="thumb"><div class="none">읽는 중…</div></div><div class="meta"><div class="name"></div><div class="status"></div><div class="links"></div></div>';
+  el.querySelector('.name').textContent = file.name;
+  $('grid').prepend(el);
+  return {
+    el,
+    status(t, err) { const s = el.querySelector('.status'); s.textContent = t; s.className = 'status' + (err ? ' err' : ''); },
+    link(label, id) {
+      const a = document.createElement('a');
+      a.href = `https://drive.google.com/file/d/${id}/view`; a.target = '_blank'; a.textContent = label;
+      el.querySelector('.links').appendChild(a);
+    },
+  };
+}
+
+async function handle(file) {
+  const card = makeCard(file);
+  const box = card.el.querySelector('.thumb');
+
+  // ① 썸네일
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const png = extractPng(bytes);
+  let pngBlob = null;
+  if (png) {
+    pngBlob = new Blob([png], { type: 'image/png' });
+    box.innerHTML = '';
+    const img = new Image(); img.src = URL.createObjectURL(pngBlob); box.appendChild(img);
+  } else {
+    box.innerHTML = '<div class="none">썸네일 없음</div>';
+  }
+
+  if (!googleReady()) { card.status('구글 드라이브 연결 후 다시 넣어 주세요 (썸네일만 확인됨)', true); return; }
+  if (!pat) { card.status('깃허브 토큰을 넣고 다시 넣어 주세요 (썸네일만 확인됨)', true); return; }
+
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const base = file.name.replace(/\.skp$/i, '');
+
+  try {
+    // ② 드라이브에 원본 + 썸네일
+    card.status(`드라이브에 원본 올리는 중… (${fmt(file.size)})`);
+    const skpId = await driveUpload(file, file.name, 'application/octet-stream');
+    card.link('원본', skpId);
+    if (pngBlob) card.link('썸네일', await driveUpload(pngBlob, base + '_썸네일.png', 'image/png'));
+
+    // ③ 변환기로 보내기
+    card.status('변환기로 보내는 중…');
+    await ghPut(`inbox/${id}.skp`, file, `변환 요청: ${file.name}`);
+
+    // ④ 변환 결과 기다리기
+    const t0 = Date.now();
+    let glb = null;
+    while (Date.now() - t0 < 20 * 60 * 1000) {
+      const sec = Math.round((Date.now() - t0) / 1000);
+      card.status(`SDK로 3D 미리보기 만드는 중… ${Math.floor(sec/60)}분 ${sec%60}초`);
+      await sleep(10000);
+      glb = await ghRaw(`outbox/${id}.glb`);
+      if (glb) break;
+      const err = await ghRaw(`outbox/${id}.error.txt`);
+      if (err) throw new Error('변환 실패: ' + (await err.text()).trim());
+    }
+    if (!glb) throw new Error('20분 안에 변환이 끝나지 않았어요. 깃허브 Actions 탭을 확인해 주세요.');
+    glb = new Blob([glb], { type: 'model/gltf-binary' });
+
+    // ⑤ 미리보기도 드라이브에
+    let note = '';
+    if (googleReady()) card.link('3D 미리보기', await driveUpload(glb, base + '_미리보기.glb', 'model/gltf-binary'));
+    else note = ' (로그인이 만료돼서 드라이브 저장은 건너뜀)';
+
+    const url = URL.createObjectURL(glb);
+    card.el.classList.add('ready');
+    const b = document.createElement('span'); b.className = 'badge3d'; b.textContent = '3D'; box.appendChild(b);
+    card.status(`완료 · 미리보기 ${fmt(glb.size)} · 눌러서 3D로 보기${note}`);
+    card.el.addEventListener('click', ev => {
+      if (ev.target.tagName === 'A') return;
+      $('vtitle').textContent = file.name;
+      $('mv').src = url;
+      $('viewer').classList.add('open');
+    });
+  } catch (e) {
+    card.status(e.message, true);
+  }
+}
+
+$('vclose').onclick = () => $('viewer').classList.remove('open');
+$('viewer').addEventListener('click', ev => { if (ev.target.id === 'viewer') $('viewer').classList.remove('open'); });
+
+const drop = $('drop'), input = $('file');
+drop.addEventListener('click', () => input.click());
+input.addEventListener('change', () => { [...input.files].forEach(handle); input.value = ''; });
+['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', ev => [...ev.dataTransfer.files].filter(f => /\.skp$/i.test(f.name)).forEach(handle));
+</script>
+</body>
+</html>
