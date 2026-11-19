@@ -246,7 +246,6 @@ async function handle(file) {
     card.status(`드라이브에 원본 올리는 중… (${fmt(file.size)})`);
     const skpId = await driveUpload(file, file.name, 'application/octet-stream');
     card.link('원본', skpId);
-    if (pngBlob) card.link('썸네일', await driveUpload(pngBlob, base + '_썸네일.png', 'image/png'));
 
     // ③ 변환기로 보내기
     card.status('변환기로 보내는 중…');
