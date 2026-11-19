@@ -716,7 +716,8 @@ function buildPanels() {
       const match = !filter || g.name.toLowerCase().includes(filter);
       if (match) {
         const tw = ch.length ? (open.has(i) || filter ? '▼' : '▶') : '';
-        const r = rowEl(g.name, groupOn[i] !== false, () => { groupOn[i] = groupOn[i] === false; updateVisibility(); return groupOn[i]; }, filter ? 0 : depth, tw);
+        const label = (g.name === '그룹' ? '이름 없는 그룹' : g.name) + (ch.length ? ` (${ch.length})` : '');
+        const r = rowEl(label, groupOn[i] !== false, () => { groupOn[i] = groupOn[i] === false; updateVisibility(); return groupOn[i]; }, filter ? 0 : depth, tw);
         if (ch.length && !filter) r.querySelector('.tw').onclick = () => { open.has(i) ? open.delete(i) : open.add(i); render(filter); };
         listEl.appendChild(r); n++;
       }
